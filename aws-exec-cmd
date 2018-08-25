@@ -1,0 +1,78 @@
+#!/bin/bash
+VERSION="0.0.1"
+CACHE_PATH="/tmp/instances"
+SSH_KEY=""
+USER="ssh-user"
+USER_CMD="example"
+CMD=""
+
+
+function usage {
+  echo "Usage: aws-cmd [-v|--version] [-h|--help]"
+  echo "  -v,--version: バージョン情報を表示します"
+  echo "  -h,--help: ヘルプを表示します"
+  exit
+}
+
+function get-remote {
+    if [ ! -f ${CACHE_PATH} ]; then
+      aws ec2 describe-instances --query 'Reservations[*].Instances[*].PublicDnsName' --output text > ${CACHE_PATH}
+    fi
+    cat ${CACHE_PATH}
+}
+
+function clean-cache {
+    if [ -f ${CACHE_PATH} ] ; then
+        rm ${CACHE_PATH}
+    fi
+}
+
+function exec-cmd {
+    cmd=${1}
+    echo "Are you sure ? exec:${cmd} [y/n]" && read ANS
+    if ! echo "$ANS" | grep '^[N/n]' > /dev/null; then 
+        for host in `get-remote`; do
+            ssh -i ${SSH_KEY} ${USER}@${host} \
+            "echo '${CMD}'| \
+            sudo -u ${USER_CMD} -H bash -l"
+        done
+    fi
+}
+
+function ssh-selected-host {
+    host=`select-host`
+    echo "ssh -i ${SSH_KEY} ${USER}@${host}"
+    ssh -i ${SSH_KEY} ${USER}@${host} \
+    -tt "sudo su ${USER}"
+}
+
+function select-host {
+    get-remote | peco
+}
+
+COMMAND=${1}
+case ${COMMAND} in
+    -v | --version)
+        echo "aws-cmd version ${VERSION}"
+        ;;
+    -h | --help)
+        usage
+        ;;
+    exec)
+        exec-cmd ${2}
+        ;;
+    clean)
+        clean-cache
+        ;;
+    select)
+        select-host
+        ;;
+    ssh)
+        ssh-selected-host
+        ;;
+    *)
+        echo "[ERROR] Invalid option '${1}'"
+        usage
+        exit 1
+        ;;
+esac
